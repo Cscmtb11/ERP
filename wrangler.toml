@@ -1,5 +1,16 @@
 name = "nexa-erp"
+main = "src/worker.js"
 compatibility_date = "2026-10-01"
 
 [assets]
 directory = "./public"
+not_found_handling = "single-page-application"
+
+[secrets]
+required = ["ADMIN_EMAIL", "ADMIN_PASSWORD_HASH"]
+
+# After creating the D1 database, add the generated binding here:
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "nexa-erp"
+# database_id = "YOUR_D1_DATABASE_ID"
