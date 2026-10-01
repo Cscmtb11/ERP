@@ -1,0 +1,14 @@
+PRAGMA foreign_keys=ON;
+CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,name TEXT NOT NULL,password_hash TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'operator',active INTEGER NOT NULL DEFAULT 1,created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY AUTOINCREMENT,token_hash TEXT NOT NULL UNIQUE,user_id TEXT NOT NULL,expires_at INTEGER NOT NULL,created_at INTEGER NOT NULL,ip TEXT,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
+CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash);
+CREATE TABLE IF NOT EXISTS banks (id TEXT PRIMARY KEY,name TEXT NOT NULL,account TEXT,branch TEXT,swift TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS customers (id TEXT PRIMARY KEY,company TEXT NOT NULL,contact TEXT,email TEXT,phone TEXT,address TEXT,importer_bank TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS products (id TEXT PRIMARY KEY,code TEXT,name TEXT NOT NULL,description TEXT,unit TEXT,hs_code TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS contracts (id TEXT PRIMARY KEY,contract_no TEXT NOT NULL UNIQUE,customer_id TEXT,currency TEXT NOT NULL DEFAULT 'INR',amount REAL NOT NULL DEFAULT 0,incoterm TEXT,payment_method TEXT,shipment_destination TEXT,last_shipment_date TEXT,status TEXT NOT NULL DEFAULT 'draft',created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,FOREIGN KEY(customer_id) REFERENCES customers(id));
+CREATE TABLE IF NOT EXISTS shipments (id TEXT PRIMARY KEY,contract_id TEXT,mode TEXT,origin TEXT,destination TEXT,eta TEXT,status TEXT NOT NULL DEFAULT 'planned',created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,FOREIGN KEY(contract_id) REFERENCES contracts(id));
+CREATE TABLE IF NOT EXISTS invoices (id TEXT PRIMARY KEY,contract_id TEXT,invoice_no TEXT NOT NULL,currency TEXT NOT NULL DEFAULT 'INR',amount REAL NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'unpaid',created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,FOREIGN KEY(contract_id) REFERENCES contracts(id));
+CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT,user_id TEXT,action TEXT,entity TEXT,entity_id TEXT,created_at INTEGER NOT NULL,ip TEXT);
+CREATE INDEX IF NOT EXISTS idx_contract_customer ON contracts(customer_id);
+CREATE INDEX IF NOT EXISTS idx_shipments_contract ON shipments(contract_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_contract ON invoices(contract_id);
