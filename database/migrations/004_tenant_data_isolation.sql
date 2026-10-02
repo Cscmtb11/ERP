@@ -1,8 +1,8 @@
 -- Nexa ERP tenant data isolation layer
 -- Run once after 003_saas_tenant_architecture.sql.
+-- The users.tenant_id column already exists in the current database.
 -- Existing records are assigned to the initial system tenant.
 
-ALTER TABLE users ADD COLUMN tenant_id TEXT;
 ALTER TABLE companies ADD COLUMN tenant_id TEXT;
 ALTER TABLE branches ADD COLUMN tenant_id TEXT;
 ALTER TABLE registrations ADD COLUMN tenant_id TEXT;
