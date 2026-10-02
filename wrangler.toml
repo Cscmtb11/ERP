@@ -8,11 +8,10 @@ binding = "ASSETS"
 run_worker_first = ["/api/*"]
 not_found_handling = "single-page-application"
 
-# Uncomment and fill these after creating the Cloudflare D1 database:
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "nexa-erp"
-# database_id = "YOUR_D1_DATABASE_ID"
+[[d1_databases]]
+binding = "DB"
+database_name = "nexa-erp"
+database_id = "d222d974-6417-46d6-b1a7-c9df31553dd9"
 
 [observability]
 enabled = true
