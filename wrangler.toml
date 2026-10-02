@@ -1,5 +1,5 @@
 name = "erp"
-main = "src/worker2.js"
+main = "src/worker3.js"
 compatibility_date = "2026-10-01"
 
 [assets]
