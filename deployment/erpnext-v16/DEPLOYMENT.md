@@ -1,116 +1,160 @@
-# Deployment runbook — ERPNext v16 on managed VPS
+# Deployment runbook — ERPNext v16 on Oracle Cloud Always Free
 
-## 1. Provision the server
+## 0. Important eligibility and cost checks
 
-Recommended provider: DigitalOcean, Bangalore datacenter `BLR1`.
+OCI Always Free compute is available only in the tenancy's home region. A1 capacity may be unavailable at a given time. The currently published Always Free A1 allowance is 2 OCPUs and 12 GB RAM total; combined boot/block-volume storage is 200 GB. The Console must explicitly label the VM shape and volumes **Always Free-eligible**.
 
-Create an Ubuntu 24.04 LTS x86_64 Basic Droplet with:
-- 4 vCPU, 8 GiB RAM, 160 GiB SSD (initial standard profile)
-- Expected listed compute price: US$48/month before taxes and optional backups; verify the live checkout price before purchase
-- Region slug: `blr1`
-- Enable automatic backups if offered and budgeted; configure independent off-site database/site-file backups regardless
+The Free Tier sign-up may request a payment card for identity verification. Oracle documents a separate 30-day trial credit; do not confuse trial-credit resources with Always Free resources. Do not upgrade to Pay As You Go or create paid resources unless you knowingly approve that cost. Consider setting budgets/usage alerts and reviewing the estimate before provisioning.
 
-Official references: https://www.digitalocean.com/pricing/droplets and https://docs.digitalocean.com/platform/regional-availability/
-- Static public IPv4
-- Provider firewall and automatic security updates
-- Separate persistent data volume if the provider supports it
+## 1. Create OCI account and choose home region
 
-Do not select Windows hosting. Do not use a serverless-only Workers plan as the ERPNext application host.
+1. Open https://www.oracle.com/cloud/free/ and create/sign in to the OCI account.
+2. Choose an India home region offered during sign-up (Mumbai or Hyderabad if available to your account). The home region cannot simply be changed later; Always Free compute and block volumes must be created there.
+3. Complete email/phone/payment-card verification if requested.
+4. After sign-in, open the OCI Console and confirm the account/tenancy is active.
 
-## 2. Secure the VPS
+## 2. Create the Always Free Ampere VM
 
-- Create a non-root sudo user and use SSH keys.
-- Disable password-based SSH after confirming key access.
-- Allow inbound TCP 22 only from your administrative IP where practical, and TCP 80/443 for web traffic.
-- Do not expose MariaDB (3306), Redis (6379), Frappe backend, worker or websocket internal ports publicly.
-- Install Docker Engine and Docker Compose v2 using Docker's official Ubuntu instructions.
-- Configure a firewall and unattended security updates.
+In OCI Console: Compute → Instances → Create instance.
 
-## 3. Fetch deployment source
+Use:
+- Name: `springnexa-erpnext-v16`
+- Availability domain: any available domain in the home region
+- Image: Ubuntu 24.04 LTS ARM64/AArch64 (choose an image compatible with A1 and confirm the resulting VM is Always Free-eligible)
+- Shape: `VM.Standard.A1.Flex`
+- OCPUs: `2`
+- Memory: `12 GB`
+- Boot volume: `100 GB` initially; this is part of the 200 GB combined Always Free storage allowance
+- Networking: create/select a VCN and public subnet; assign a public IPv4 for the direct Cloudflare-proxied origin
+- SSH: add your own public SSH key; keep the private key on your Windows PC and never upload it to GitHub or send it in chat
 
-On the VPS:
+Before clicking Create, check the cost estimate and confirm the VM and boot volume show **Always Free-eligible**. Do not add paid block volumes, paid load balancers or other billable services. If A1 capacity is unavailable, retry later or try another availability domain in the same home region. Do not create a paid alternative by accident.
 
-```bash
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y git ca-certificates curl
-git clone https://github.com/Cscmtb11/ERP.git /opt/springnexa-erp-config
-cd /opt/springnexa-erp-config/deployment/erpnext-v16
+## 3. Configure OCI network security
+
+Create/verify the subnet security list or network security group:
+- TCP 22 (SSH): allow only your current trusted public IP where possible
+- TCP 80 and 443: allow inbound for Cloudflare-origin web traffic and certificate setup
+- Do not allow public inbound access to MariaDB 3306, Redis 6379, backend 8000, websocket/internal service ports or Docker APIs
+
+After Cloudflare is working, restrict ports 80/443 to Cloudflare's published IPv4/IPv6 ranges where practical, while retaining a documented recovery path. Keep the OCI firewall and Ubuntu host firewall aligned. Never expose database/cache services.
+
+## 4. Connect from Windows 11
+
+Use Windows Terminal / PowerShell and your private SSH key:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\oci_erp_ed25519" ubuntu@YOUR_PUBLIC_IP
 ```
 
-Clone the official Frappe Docker repository separately:
+Replace the key path and IP with your actual values. The OCI Ubuntu image may use `ubuntu` as the default login; verify the image's documented username. Do not paste the private key into chat.
+
+## 5. Prepare Ubuntu and Docker
+
+On the VM:
 
 ```bash
-git clone https://github.com/frappe/frappe_docker.git /opt/frappe_docker
+sudo apt update
+sudo apt full-upgrade -y
+sudo apt install -y ca-certificates curl git gnupg ufw jq
+```
+
+Install Docker Engine and the Docker Compose v2 plugin using Docker's official Ubuntu ARM64 instructions:
+https://docs.docker.com/engine/install/ubuntu/
+
+Enable Docker and verify:
+```bash
+sudo systemctl enable --now docker
+sudo docker version
+sudo docker compose version
+```
+
+Create a non-root deployment user with sudo access if desired. Configure SSH key-only authentication only after verifying a second SSH session works. Enable unattended security updates.
+
+## 6. Fetch deployment source
+
+```bash
+sudo git clone --branch deploy/erpnext-v16-cloudflare https://github.com/Cscmtb11/ERP.git /opt/springnexa-erp-config
+sudo git clone https://github.com/frappe/frappe_docker.git /opt/frappe_docker
+```
+
+Review and pin a tested frappe_docker release/commit rather than blindly following future upstream changes. Copy the public app manifest:
+
+```bash
+sudo cp /opt/springnexa-erp-config/deployment/erpnext-v16/apps.json /opt/frappe_docker/apps.json
+sudo chown -R "$USER":"$USER" /opt/frappe_docker
 cd /opt/frappe_docker
-cp /opt/springnexa-erp-config/deployment/erpnext-v16/apps.json ./apps.json
 ```
 
-Review and pin the frappe_docker release/commit used for production rather than blindly following future upstream changes.
+## 7. Build or pull an ARM64 ERPNext v16 image
 
-## 4. Build the ERPNext v16 image
+Use the official Frappe Docker production build instructions and ARM64 guide:
+- https://frappe.github.io/frappe_docker/
+- https://github.com/frappe/frappe_docker/blob/main/docs/01-getting-started/03-arm64.md
 
-Use Docker BuildKit/Buildx. The apps manifest is a build secret, not a build argument:
+The deployment must use an image that explicitly supports `linux/arm64`. For a custom image, use Docker Buildx with the ARM64 platform and the `apps.json` manifest as a BuildKit secret, following the current official build instructions. Do not assume an x86_64 image will run natively on A1. Do not use the disposable `pwd.yml` demo for production.
 
-```bash
-DOCKER_BUILDKIT=1 docker build \
-  --no-cache \
-  --build-arg=FRAPPE_PATH=https://github.com/frappe/frappe \
-  --build-arg=FRAPPE_BRANCH=version-16 \
-  --secret=id=apps_json,src=apps.json \
-  --tag=springnexa/erpnext:v16 \
-  --file=images/layered/Containerfile .
-```
+## 8. Configure production Compose and secrets
 
-The official image build process uses the manifest to install ERPNext from its `version-16` branch. Do not place private Git credentials in build arguments or repository files.
-
-## 5. Configure production Compose
-
-Follow the official Frappe Docker **Single Server Setup** and **Single Server Example** for the exact current Compose files and environment variables:
+Follow the current official Frappe Docker single-server production setup:
 https://frappe.github.io/frappe_docker/02-setup/07-single-server-example.html
 
-Use the production multi-service setup, not `pwd.yml` (quick demo). Configure the stack to use `springnexa/erpnext:v16`, MariaDB and Redis. Set the public site hostname to `erp.springnexa.in`.
+Configure:
+- Site hostname: `erp.springnexa.in`
+- ERPNext v16 app image for ARM64
+- MariaDB and Redis internal-only
+- frontend reverse proxy with HTTPS and websocket upgrade
+- persistent database volume
+- persistent Frappe sites volume (including private/public files)
+- persistent logs volume
+- restart policies and health checks
 
-Requirements:
-- MariaDB and Redis must have persistent volumes.
-- Frappe sites volume must persist both public and private files.
-- Configure restart policies and health checks.
-- Do not publish internal database/cache/backend/worker ports to the public interface.
-- Configure the public frontend/reverse proxy for HTTPS and websocket upgrade.
-- Keep all production secrets in server-side environment files with mode 600, never in Git.
+Create the real environment file only on the VM, not in Git:
 
-Before running `docker compose up -d`, inspect the fully rendered configuration with `docker compose config` and confirm no secret is being printed into CI logs.
+```bash
+sudo install -m 600 /dev/null /opt/frappe_docker/.env
+sudo nano /opt/frappe_docker/.env
+```
 
-## 6. Create the ERPNext site
+Generate strong unique database and Administrator passwords on the server/password manager. Do not put them in this repository, terminal command history, screenshots or chat. Run `docker compose config` and inspect the rendered services before starting; confirm internal ports are not published publicly.
 
-After the official production stack is healthy, use the backend container and the documented site operations for that exact Compose project. The site name must be `erp.springnexa.in`. Create a strong Administrator password, install ERPNext, then verify scheduler and workers are running.
+## 9. Cloudflare DNS and TLS
 
-Do not run site-creation commands until the production Compose project name and backend service name have been confirmed from the selected official setup. Keep the Administrator password in a password manager.
+Follow `CLOUDFLARE.md`:
+- A record `erp` → OCI VM public IPv4, Proxied
+- TLS mode Full (strict)
+- install Cloudflare Origin CA or another valid origin certificate at the reverse proxy
+- allow websocket upgrade and bypass caching for dynamic ERP routes
 
-## 7. Cloudflare
+Cloudflare Workers and Tunnel are not used in this design.
 
-Follow `CLOUDFLARE.md`. Set Cloudflare SSL/TLS to Full (strict), proxy the web DNS record, and restrict origin access to Cloudflare IP ranges where compatible with provider firewall rules. Confirm websocket, uploads and downloads work through the proxy.
+## 10. Create site and install ERPNext
 
-## 8. Backups and recovery
+Only after the production Compose project is healthy, confirm the exact service/container names from the pinned official configuration. Use the official Frappe Docker site-creation procedure to create `erp.springnexa.in`, install ERPNext, and set a strong Administrator password. Confirm workers, scheduler and websocket are healthy.
 
-Back up BOTH:
-1. MariaDB database (consistent database backup).
-2. Frappe site files, including private/public files and site configuration needed for restore.
+## 11. Persistent data and backup policy
 
-Store encrypted copies off the VPS (Cloudflare R2 is an optional destination). Keep provider snapshots as an additional recovery layer, not the only backup. Define retention, monitor backup success, and test restoration to a separate staging site before entering live business data.
+Live data stays on OCI persistent storage:
+- MariaDB database files on a persistent volume
+- Frappe sites volume including public/private attachments and site config
+- logs as appropriate
 
-## 9. Acceptance tests before production
+Back up both the database and site files. Encrypt backups before copying them off the VM to an independent storage target (OCI Object Storage or Cloudflare R2). Check that the destination and storage tier are free/eligible before enabling; do not assume unlimited free backup storage. Keep a retention policy and test a restore to a separate staging site. A VM snapshot alone is not a complete application backup.
 
-- DNS resolves to Cloudflare and HTTPS certificate is valid.
-- Login/logout and password reset work.
-- ERPNext desk loads and assets load correctly.
-- Background jobs and scheduler execute.
-- Realtime notifications/websocket connect.
-- Upload/download of representative documents works.
-- Email delivery works (SMTP is outbound from the VPS; DNS mail records remain DNS-only).
-- Backup completes and restore test succeeds.
-- Firewall scan confirms database and Redis are not public.
-- Cloudflare security events and VPS monitoring are visible.
+## 12. Acceptance checks before live use
 
-## Not performed by this repository preparation
+- VM and all attached volumes are Always Free-eligible in OCI Console
+- SSH access is key-based and restricted
+- DNS resolves through Cloudflare; Full (strict) HTTPS works
+- ERPNext desk, login/logout and password reset work
+- background workers and scheduler execute
+- realtime websocket connects
+- representative file uploads/downloads and print formats work
+- SMTP/email works if configured
+- database and Redis ports are not public
+- encrypted database + site-file backup completes and restore is tested
+- storage, memory and CPU are monitored; keep free-tier resource limits in view
 
-This runbook does not provision a VPS, change Cloudflare DNS, issue certificates, create credentials, start containers or install ERPNext. Those steps require access to the selected hosting provider and Cloudflare account.
+## Not yet performed
+
+No OCI account, VM, network rule, DNS record, certificate, Docker stack or ERPNext site has been created by this runbook. Provisioning and account verification must be completed by the account owner. After the VM is created, share only its public IPv4 address and confirm Cloudflare zone access; never share passwords, private keys or API tokens.
