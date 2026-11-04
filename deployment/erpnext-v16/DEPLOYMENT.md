@@ -2,8 +2,15 @@
 
 ## 1. Provision the server
 
-Create an Ubuntu 24.04 LTS x86_64 VPS with:
-- 4 vCPU, 8 GB RAM, 160 GB SSD/NVMe (initial standard profile)
+Recommended provider: DigitalOcean, Bangalore datacenter `BLR1`.
+
+Create an Ubuntu 24.04 LTS x86_64 Basic Droplet with:
+- 4 vCPU, 8 GiB RAM, 160 GiB SSD (initial standard profile)
+- Expected listed compute price: US$48/month before taxes and optional backups; verify the live checkout price before purchase
+- Region slug: `blr1`
+- Enable automatic backups if offered and budgeted; configure independent off-site database/site-file backups regardless
+
+Official references: https://www.digitalocean.com/pricing/droplets and https://docs.digitalocean.com/platform/regional-availability/
 - Static public IPv4
 - Provider firewall and automatic security updates
 - Separate persistent data volume if the provider supports it
