@@ -2,7 +2,9 @@
 
 Production target: https://erp.springnexa.in
 
-This deployment uses a managed Linux VPS/cloud VM for the complete ERPNext stack. Cloudflare provides authoritative DNS, proxied HTTPS, edge security and WAF. GitHub stores deployment code and configuration templates only.
+Selected provider: DigitalOcean Droplet in Bangalore (BLR1), India. Initial plan: Basic 4 vCPU / 8 GiB RAM / 160 GiB SSD, listed at US$48/month before taxes and optional backups. This is cloud infrastructure hosting; the Droplet OS and ERPNext stack remain customer-administered unless a separate managed-operations service is contracted.
+
+This deployment uses a Linux VPS/cloud VM for the complete ERPNext stack. Cloudflare provides authoritative DNS, proxied HTTPS, edge security and WAF. GitHub stores deployment code and configuration templates only.
 
 **No live ERPNext data belongs in GitHub or Cloudflare Workers.** MariaDB data and Frappe site files remain on persistent storage attached to the cloud server. Cloudflare R2 may be used for encrypted off-site backups.
 
